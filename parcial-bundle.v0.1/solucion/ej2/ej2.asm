@@ -34,6 +34,21 @@ EJERCICIO_2A_HECHO: db TRUE ; Cambiar por `TRUE` para correr los tests.
 ;   - height:    El alto en píxeles de `src_depth` y `dst_depth`.
 global ej2a
 ej2a:
+
+	; coloquio{
+;		Preparar registros SIMD para las operaciones, pasar scale y offset a 128 bits	
+;	Cargar los datos y extensión: cargar los pixeles de 8 bits desde la memoria y extender cada pixel a 32 bits
+;	Operación SIMD: hacer la operación scale * px + offset dentro del ciclo
+;	Extender con las instrucción SIGNADA para que los pixeles sean de 32 bits con signo
+;	
+;	
+;	
+;	
+;
+	;}
+
+
+
 	; Te recomendamos llenar una tablita acá con cada parámetro y su
 	; ubicación según la convención de llamada. Prestá atención a qué
 	; valores son de 64 bits y qué valores son de 32 bits.
@@ -71,41 +86,74 @@ ej2a:
 
 	; habria que extender rdx, rcx para que sean de 128 bits para luego hacer la ecuacion de una manera SIMD-eana
 	; de a 4
-	movdqu xmm3, rdx ; xmm3 = scale
-	movdqu xmm4, rcx ; xmm4 = offset
+	; coloquio{
+	movd xmm1, edx ; xmm1 = scale
+	pshufd xmm1, xmm1, 0 ; xmm1 = scale, scale, scale, scale
+	movd xmm2, ecx ; xmm2 = offset
+	pshufd xmm2, xmm2, 0 ; xmm2 = offset, offset, offset, offset
+	; hago los shuffles para que los registros xmm1 y xmm2 tengan los valores de scale y offset en los 4 elementos
+	; pshufd me ayuda a configurar los registros para que la operación aritmetica SIMD se ejecute sobre varios pixeles a la vez. 
+	; el argumento 0 significa: "replicá el elemento en la posición más baja en todos los otros elementos del registro"
+	; Toma el double word en la posición más baja de xmm1 y lo copia en todas las posiciones de xmm1
+	;
+	
+	}
 	; tengo que guardar source y destination en registros xmm tambien
 	movdqu xmm0, [rsi] ; acá tengo en rsi la dirección de memoria de src_depth
 
 	; armo un ciclo para recorrer los pixeles de las imagenes
 	
-	xor rcx, rcx ; contador del ciclo
+	; coloquio: width * height / 4 = cantidad de pixeles que tengo que recorrer
+	; coloquio: configuro correctamente el ciclo {
+	mov rax, r9 ; rax = height
+	mul r8 ; rax = height * width
+	mov r10, rax ; r10 = height * width = cantidad total de pixeles
+	xor rax, rax ; contador del ciclo
+	; }
 	.loop:
+		; coloquio{
+		cmp rax, r10 ; comparo si llegue al final de la imagen
+		jge .fin ; si llegue al final de la imagen termino el ciclo
+		;}
+
 		;extenderlo a 32 bits con la instruccion PMOVZXBD
 		
 		; quiero extender el rcx-esimo pixel de src_depth a 32 bits
 		; entonces tengo que mover el pixel de 8 bits a xmm0
-		PMOVZXBD xmm0, [rsi + rcx];xmm0 ; acá tengo el pixel de 8 bits extendido a 32 bits en xmm0
+		PMOVZXBD xmm0, [rsi + rax];xmm0 ; acá tengo el pixel de 8 bits extendido a 32 bits en xmm0
 		; ahora tengo el pixel de 8 bits extendido a 32 bits en xmm0
 		; ahora tengo que hacer la operacion scale * px + offset
 
 		; ahora hago la multiplicacion y la suma
-		PMULDQ xmm5, xmm0, xmm3 ; xmm5 = scale * px
-		PADDD xmm5, xmm5, xmm4 ; xmm5 = scale * px + offset
+;		PMULDQ xmm5, xmm0, xmm3 ; xmm5 = scale * px
+		;coloquio: {
+		PMULLD xmm0, xmm1 ; xmm0 = scale * px
+		PADDD xmm0, xmm2 ; xmm0 = scale * px + offset		
+		;}
+		;PADDD xmm5, xmm5, xmm4 ; xmm5 = scale * px + offset
+
+		
+
 
 
 		; ahora hago primero la multiplicacion y despues la suma 
-		PMULDQ xmm5, xmm0, xmm3 ; xmm5 = scale * px
-		PADDD xmm5, xmm5, xmm4 ; xmm5 = scale * px + offset
+		;PMULDQ xmm5, xmm0, xmm3 ; xmm5 = scale * px
+		;PADDD xmm5, xmm5, xmm4 ; xmm5 = scale * px + offset
 		; ahora tengo el resultado de la operacion en xmm5
 		; ahora tengo que guardar el resultado en dst_depth
 		; para eso tengo que mover el pixel de 32 bits a la dirección de memoria de dst_depth
-		movdqu dword [rdi + rcx], xmm5 ; guardo el pixel de 32 bits en la dirección de memoria de dst_depth
+		;movdqu dword [rdi + rcx], xmm5 ; guardo el pixel de 32 bits en la dirección de memoria de dst_depth
+		
+		;Coloquio {
+		movdqu [rdi + rax * 4], xmm0 ; guardo el pixel de 32 bits en la dirección de memoria de dst_depth		
+		;}
+		
+		
 		; ahora tengo que avanzar al siguiente pixel
-		add rcx, 4 ; avanzo al siguiente pixel
-		cmp rcx, r9 ; comparo si llegue al final de la imagen
-		jne .loop ; si no llegue al final de la imagen sigo recorriendo los pixeles
-		; y ahora termino el ciclo
+		add rax, 4 ; avanzo al siguiente pixel
+		jmp .loop 
 
+	.fin:
 
 	
 	pop rbp
