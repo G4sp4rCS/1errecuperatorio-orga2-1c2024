@@ -16,7 +16,7 @@ TRUE  EQU 1
 ; Funciones a implementar:
 ;   - ej2a
 global EJERCICIO_2A_HECHO
-EJERCICIO_2A_HECHO: db TRUE ; Cambiar por `TRUE` para correr los tests.
+EJERCICIO_2A_HECHO: db FALSE ; Cambiar por `TRUE` para correr los tests.
 
 ; Dada una imagen origen escribe en el destino `scale * px + offset` por cada
 ; píxel en la imagen.
@@ -164,7 +164,7 @@ ej2a:
 ; Funciones a implementar:
 ;   - ej2b
 global EJERCICIO_2B_HECHO
-EJERCICIO_2B_HECHO: db FALSE ; Cambiar por `TRUE` para correr los tests.
+EJERCICIO_2B_HECHO: db TRUE ; Cambiar por `TRUE` para correr los tests.
 
 ; Dadas dos imágenes de origen (`a` y `b`) en conjunto con sus mapas de
 ; profundidad escribe en el destino el pixel de menor profundidad por cada
@@ -209,7 +209,10 @@ ej2b:
 ; y para ello voy a usar la instruccion PCMPGTD (o alguna de comparacion) que compara los pixeles de a y b y guarda en un registro xmm el resultado de la comparacion
 ; tengo que usar una mascara que me diga cual de las 2 profundidades es mayor, entonces puedo hacer un compare con eso, y me deja todo con ceros y unos
 ; y ahí puedo pasar PAND
-
+; coloquio {
+;	por iteración voy a procesar 4 pixeles, cada pixel son 32 bits, entonces tengo que recorrer width * height / 4 pixeles
+	; entonces tengo que hacer la división;
+;}
 	; armo stackframe
 	push rbp
 	mov rbp, rsp
@@ -217,40 +220,46 @@ ej2b:
 	; calculo el total de pixeles que tengo que recorrer
 	mov rax, r9 ; rax = width
 	mul r10 ; rax = width * height
-	
-	xor rcx, rcx ; contador del ciclo
+	mov r11, rax ; r11 = width * height = cantidad total de pixeles
+	; ahora divido
+	shr r11, 2 ; r11 = r11 / 4 = cantidad total de pixeles que tengo que recorrer
 
-	; Ciclo para iterar en bloques de 4 píxeles
+	xor rax, rax ; contador del ciclo
+
+	; Ciclo para iterar
 
 	.loop:
-		cmp rcx, rax ; comparo si llegue al final de la imagen
-		jge .fin ; si llegue al final de la imagen termino el ciclo
+		cmp r11, 0 ; comparo si llegue al final de la imagen
+		je .fin ; si llegue al final de la imagen termino el ciclo
 
-		; cargo profundidades
-		movdqu xmm0, [rdx + rcx * 4] ; xmm0 = depth_a
-		movdqu xmm1, [r8 + rcx * 4] ; xmm1 = depth_b
+		; cargo los pixeles de a y b
+		movdqu xmm0, [rsi + rax] ; xmm0 = a
+		movdqu xmm1, [rcx + rax] ; xmm1 = b
 
-		; comparo profundidades
-		pcmpgtd xmm2, xmm0, xmm1 ; xmm2 = depth_a > depth_b
+
+		;cargo 
+		movdqu xmm2, [rdx + rax] ; xmm2 = depth_a
+		movdqu xmm3, [r8 + rax] ; xmm3 = depth_b
+
+
+		; y ahora tengo que comparar las profundidades
+		pcmpgtd xmm2, xmm3 ; xmm2 = depth_a > depth_b
+		; Compare Packed Signed Integers for Greater Than
 ;		 xmm2 = máscara de profundidades (1 si b < a, 0 si a <= b)
-		; Compare Packed Signed Integers for Greater Than 
-
-		; Cargo bloques de 4 píxeles de a y b
-		movdqu xmm3, [rsi + rcx * 16] ; xmm3 = a
-		movdqu xmm4, [rcx + rcx * 16] ; xmm4 = b
-		; multiplico por 16 pues cada pixel ocupa 4 bytes y tengo que cargar 4 pixeles a la vez.
 
 		; Seleccionar pixeles según mascara
-		pand xmm5, xmm3, xmm2 ; xmm5 = pixeles de a donde depth_a > depth_b
-		pandn xmm6, xmm2, xmm4 ; xmm6 = pixeles de b donde depth_a > depth_b
-		; packed AND NOT
-		por xmm5, xmm5, xmm2 ; combino los pixeles de a y b según la máscara
+		pand xmm4, xmm2 ; xmm4 = profundidades de b donde depth_a > depth_b
+		pandn xmm5, xmm2 ; xmm5 = pixeles de a donde depth_a > depth_b
 
-		; Guardar resultado
-		movdqu [rdi + rcx * 16], xmm5 ; guardo los 4 píxeles en la imagen destino
+		por xmm5, xmm5; combino los pixeles de a y b según la máscara
+	
+		; Ahora tengo en xmm5 los pixeles de a y b según la máscara
+		; Ahora tengo que guardar el resultado en dst
+		movdqu [rdi + rax], xmm5 ; guardo el pixel de 32 bits en la dirección de memoria de dst
 
-		; Avanzar al siguiente bloque de 4 píxeles
-		add rcx, 4 ; avanzo al siguiente bloque de 4 píxeles
+		; avanzo al siguiente pixel
+		dec r11 ; decremento el contador
+		add rax, 16 ; avanzo al siguiente pixel
 		jmp .loop
 
 	.fin:
