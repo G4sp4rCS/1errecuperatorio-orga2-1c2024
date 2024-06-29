@@ -97,7 +97,7 @@ ej2a:
 	; Toma el double word en la posición más baja de xmm1 y lo copia en todas las posiciones de xmm1
 	;
 	
-	}
+	;}
 	; tengo que guardar source y destination en registros xmm tambien
 	movdqu xmm0, [rsi] ; acá tengo en rsi la dirección de memoria de src_depth
 
@@ -210,7 +210,49 @@ ej2b:
 ; tengo que usar una mascara que me diga cual de las 2 profundidades es mayor, entonces puedo hacer un compare con eso, y me deja todo con ceros y unos
 ; y ahí puedo pasar PAND
 
+	; armo stackframe
+	push rbp
+	mov rbp, rsp
 
+	; calculo el total de pixeles que tengo que recorrer
+	mov rax, r9 ; rax = width
+	mul r10 ; rax = width * height
+	
+	xor rcx, rcx ; contador del ciclo
 
+	; Ciclo para iterar en bloques de 4 píxeles
 
+	.loop:
+		cmp rcx, rax ; comparo si llegue al final de la imagen
+		jge .fin ; si llegue al final de la imagen termino el ciclo
+
+		; cargo profundidades
+		movdqu xmm0, [rdx + rcx * 4] ; xmm0 = depth_a
+		movdqu xmm1, [r8 + rcx * 4] ; xmm1 = depth_b
+
+		; comparo profundidades
+		pcmpgtd xmm2, xmm0, xmm1 ; xmm2 = depth_a > depth_b
+;		 xmm2 = máscara de profundidades (1 si b < a, 0 si a <= b)
+		; Compare Packed Signed Integers for Greater Than 
+
+		; Cargo bloques de 4 píxeles de a y b
+		movdqu xmm3, [rsi + rcx * 16] ; xmm3 = a
+		movdqu xmm4, [rcx + rcx * 16] ; xmm4 = b
+		; multiplico por 16 pues cada pixel ocupa 4 bytes y tengo que cargar 4 pixeles a la vez.
+
+		; Seleccionar pixeles según mascara
+		pand xmm5, xmm3, xmm2 ; xmm5 = pixeles de a donde depth_a > depth_b
+		pandn xmm6, xmm2, xmm4 ; xmm6 = pixeles de b donde depth_a > depth_b
+		; packed AND NOT
+		por xmm5, xmm5, xmm2 ; combino los pixeles de a y b según la máscara
+
+		; Guardar resultado
+		movdqu [rdi + rcx * 16], xmm5 ; guardo los 4 píxeles en la imagen destino
+
+		; Avanzar al siguiente bloque de 4 píxeles
+		add rcx, 4 ; avanzo al siguiente bloque de 4 píxeles
+		jmp .loop
+
+	.fin:
+	pop rbp
 	ret
